@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Car Repair: inglizcha o‘yin</title>
+<style>
+*{box-sizing:border-box;margin:0}
+body{font-family:Bahnschrift,"Segoe UI",system-ui,sans-serif;background:#d9e2e6;color:#15252d;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+.card{position:relative;overflow:hidden;background:#f6f9fa;border-radius:6px;padding:34px 22px 22px;width:100%;max-width:720px;box-shadow:0 2px 0 #aab8be}
+.card::before{content:"";position:absolute;inset:0 0 auto;height:10px;background:repeating-linear-gradient(45deg,#f4c430 0 12px,#15252d 12px 24px)}
+h1{font-size:24px;margin-bottom:6px}
+p.sub{margin-bottom:14px}
+button{font:inherit;background:#e3eaed;color:inherit;border:2px solid #15252d;border-radius:4px;padding:9px 14px;cursor:pointer}
+button:hover{background:#d3dde2}
+button:focus-visible,input:focus-visible{outline:3px solid #1f5fbf;outline-offset:2px}
+button.on,button.main{background:#1f5fbf;color:#fff;border-color:#1f5fbf}
+.tabs{display:flex;gap:8px;margin-bottom:14px}.tabs button{flex:1}
+input{display:block;width:100%;font:inherit;padding:10px;margin-bottom:10px;border:2px solid #15252d;border-radius:4px;background:#fff}
+.err{color:#d9372b;min-height:22px;margin-bottom:8px}
+.hidden{display:none!important}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;justify-content:space-between;margin-bottom:12px}
+.chip{background:#f4c430;padding:4px 10px;border-radius:4px;font-weight:700}
+canvas{display:block;width:100%;border-radius:4px;cursor:pointer}
+.row{margin-top:12px}
+#toast{margin-top:12px;min-height:24px}
+#modal{position:fixed;inset:0;background:#15252dcc;display:flex;align-items:center;justify-content:center;padding:16px}
+#modal .card{max-width:460px}
+#q{font-size:20px;margin-bottom:10px}
+.opt{display:block;width:100%;margin-top:8px;text-align:left}
+.opt.ok{background:#1f9d55;color:#fff;border-color:#1f9d55}
+.opt.no{background:#d9372b;color:#fff;border-color:#d9372b}
+</style>
+</head>
+<body>
+
+<div class="card" id="auth">
+  <h1>Car Repair</h1>
+  <p class="sub">Inglizcha savollarga javob bering va mashinani tuzating.</p>
+  <div class="tabs">
+    <button id="tLogin" class="on">Kirish</button>
+    <button id="tSign">Roʻyxatdan oʻtish</button>
+  </div>
+  <input id="u" placeholder="Login (3-16 ta harf yoki raqam)" autocomplete="username">
+  <input id="p" type="password" placeholder="Parol (kamida 4 belgi)" autocomplete="current-password">
+  <input id="p2" type="password" placeholder="Parolni takrorlang" class="hidden" autocomplete="new-password">
+  <div class="err" id="err"></div>
+  <button class="main" id="go" style="width:100%">Kirish</button>
+</div>
+
+<div class="card hidden" id="game">
+  <div class="bar">
+    <span id="who"></span>
+    <span class="chip" id="bal"></span>
+    <span id="sc"></span>
+    <span id="lv"></span>
+    <button id="out">Chiqish</button>
+  </div>
+  <canvas id="cv" width="640" height="300"></canvas>
+  <div class="row"><button id="earn">Pul ishlash (+$20)</button></div>
+  <div id="toast" aria-live="polite"></div>
+</div>
+
+<div id="modal" class="hidden">
+  <div class="card">
+    <h1 id="q"></h1>
+    <div id="opts"></div>
+    <button id="close" style="margin-top:12px">Bekor qilish</button>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const PARTS=[
+  {id:'engine',n:'Dvigatel',c:60,x:510,y:165,e:'⚙️'},
+  {id:'battery',n:'Akkumulyator',c:40,x:410,y:165,e:'🔋'},
+  {id:'oil',n:'Moy',c:20,x:310,y:185,e:'🛢️'},
+  {id:'wheel',n:'Gʻildirak',c:30,x:170,y:240,e:'🔩'},
+  {id:'brake',n:'Tormoz',c:35,x:480,y:240,e:'🛑'}
+];
+// [savol, TOʻGʻRI javob, notoʻgʻri, notoʻgʻri, notoʻgʻri]
+const QS=[
+  ['"engine" nima degani?','Dvigatel','Gʻildirak','Tormoz','Moy'],
+  ['"wheel" nima degani?','Gʻildirak','Rul','Oyna','Eshik'],
+  ['"brake" nima degani?','Tormoz','Gaz','Rul','Chiroq'],
+  ['"battery" nima degani?','Akkumulyator','Benzin','Moy','Shina'],
+  ['"oil" nima degani?','Moy','Suv','Benzin','Havo'],
+  ['"fuel" nima degani?','Yoqilgʻi','Rul','Tormoz','Eshik'],
+  ['"steering wheel" nima degani?','Rul','Tormoz','Dvigatel','Oyna'],
+  ['"mirror" nima degani?','Koʻzgu','Eshik','Chiroq','Shina'],
+  ['She ___ a mechanic.','is','are','am','be'],
+  ['I ___ to work every day.','go','goes','going','gone'],
+  ['They ___ fixing the car now.','are','is','am','be'],
+  ['He has two ___.','cars','car','caring','a car'],
+  ['Yesterday I ___ new tires.','bought','buyed','buy','buys'],
+  ['Opposite of "broken":','fixed','small','old','fast']
+];
+
+let me=null,U='',mode='login',last=-1;
+const calm=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const store={
+  get:()=>{try{return JSON.parse(localStorage.getItem('cg_users')||'{}')}catch{return{}}},
+  set:d=>localStorage.setItem('cg_users',JSON.stringify(d))
+};
+const save=()=>{const a=store.get();a[U]=me;store.set(a)};
+const err=m=>{$('err').textContent=m};
+const say=m=>{$('toast').textContent=m};
+const newCar=()=>PARTS.map(p=>p.id).sort(()=>Math.random()-.5).slice(0,2+Math.floor(Math.random()*2));
+
+async function hash(s){
+  if(crypto.subtle){
+    const b=await crypto.subtle.digest('SHA-256',new TextEncoder().encode('cg:'+s));
+    return[...new Uint8Array(b)].map(x=>x.toString(16).padStart(2,'0')).join('');
+  }
+  return btoa(unescape(encodeURIComponent('cg:'+s)));
+}
+
+/* ---------- Kirish / roʻyxatdan oʻtish ---------- */
+function tab(m){
+  mode=m;
+  $('tLogin').classList.toggle('on',m=='login');
+  $('tSign').classList.toggle('on',m=='sign');
+  $('p2').classList.toggle('hidden',m=='login');
+  $('go').textContent=m=='login'?'Kirish':'Roʻyxatdan oʻtish';
+  err('');
+}
+$('tLogin').onclick=()=>tab('login');
+$('tSign').onclick=()=>tab('sign');
+
+$('go').onclick=async()=>{
+  const name=$('u').value.trim().toLowerCase(),pw=$('p').value,all=store.get();
+  if(!/^[a-z0-9_]{3,16}$/.test(name))return err('Login 3-16 ta harf, raqam yoki _ boʻlsin');
+  if(pw.length<4)return err('Parol kamida 4 belgi boʻlsin');
+  const h=await hash(pw);
+  if(mode=='sign'){
+    if(all[name])return err('Bu login band');
+    if(pw!==$('p2').value)return err('Parollar mos emas');
+    all[name]={h,bal:100,score:0,level:1,broken:newCar()};
+    store.set(all);
+  }else if(!all[name]||all[name].h!==h){
+    return err('Login yoki parol notoʻgʻri');
+  }
+  localStorage.setItem('cg_session',name);
+  start(name);
+};
+document.addEventListener('keydown',e=>{
+  if(e.key=='Enter'&&!$('auth').classList.contains('hidden'))$('go').click();
+});
+
+function start(name){
+  U=name;me=store.get()[name];
+  $('auth').classList.add('hidden');
+  $('game').classList.remove('hidden');
+  $('who').textContent='👤 '+name;
+  hud();
+  say('Buzilgan qismni bosing. Toʻgʻri javob bersangiz, qism avtomatik sotib olinadi va oʻrnatiladi.');
+}
+$('out').onclick=()=>{
+  localStorage.removeItem('cg_session');
+  me=null;
+  $('game').classList.add('hidden');
+  $('auth').classList.remove('hidden');
+  $('p').value='';$('p2').value='';err('');
+};
+
+/* ---------- O‘yin ---------- */
+function hud(){
+  $('bal').textContent='💰 $'+me.bal;
+  $('sc').textContent='⭐ '+me.score;
+  $('lv').textContent='🚗 '+me.level+'-mashina';
+}
+
+function ask(onOk){
+  let i;do{i=Math.floor(Math.random()*QS.length)}while(i==last);
+  last=i;
+  const [q,ok,...w]=QS[i];
+  $('q').textContent=q;
+  $('opts').innerHTML='';
+  [ok,...w].sort(()=>Math.random()-.5).forEach(t=>{
+    const b=document.createElement('button');
+    b.className='opt';b.textContent=t;
+    b.onclick=()=>{
+      [...$('opts').children].forEach(x=>{x.disabled=true;if(x.textContent===ok)x.classList.add('ok')});
+      if(t!==ok)b.classList.add('no');
+      setTimeout(()=>{
+        $('modal').classList.add('hidden');
+        t===ok?onOk():say('❌ Notoʻgʻri. Toʻgʻri javob: '+ok);
+      },800);
+    };
+    $('opts').append(b);
+  });
+  $('modal').classList.remove('hidden');
+}
+$('close').onclick=()=>$('modal').classList.add('hidden');
+
+function repair(p){
+  me.bal-=p.c;
+  me.broken=me.broken.filter(x=>x!==p.id);
+  me.score+=10;
+  let m=`✅ Toʻgʻri! ${p.n} avtomatik sotib olindi (−$${p.c}) va oʻrnatildi.`;
+  if(!me.broken.length){
+    me.bal+=50;me.score+=50;me.level++;me.broken=newCar();
+    m+=' 🎉 Mashina tayyor! +$50. Yangi mashina keldi.';
+  }
+  save();hud();say(m);
+}
+
+$('earn').onclick=()=>ask(()=>{me.bal+=20;save();hud();say('✅ Toʻgʻri! +$20')});
+
+$('cv').onclick=e=>{
+  const r=$('cv').getBoundingClientRect();
+  const x=(e.clientX-r.left)*640/r.width,y=(e.clientY-r.top)*300/r.height;
+  const p=PARTS.find(p=>Math.hypot(p.x-x,p.y-y)<26);
+  if(!p)return;
+  if(!me.broken.includes(p.id))return say('✅ Bu qism allaqachon tuzatilgan.');
+  if(me.bal<p.c)return say(`❌ Pul yetarli emas: $${p.c} kerak. "Pul ishlash" tugmasini bosing.`);
+  ask(()=>repair(p));
+};
+
+/* ---------- Chizish ---------- */
+const g=$('cv').getContext('2d');
+function draw(t){
+  g.clearRect(0,0,640,300);
+  g.fillStyle='#c9d6db';g.fillRect(0,0,640,262);
+  g.fillStyle='#8d99a0';g.fillRect(0,262,640,38);
+  g.fillStyle='#f4c430';g.fillRect(40,280,560,4);
+  // kuzov
+  g.fillStyle=`hsl(${me.level*47%360},65%,48%)`;
+  g.beginPath();g.roundRect(100,130,470,90,18);g.fill();
+  g.beginPath();g.moveTo(200,130);g.lineTo(240,80);g.lineTo(400,80);g.lineTo(440,130);g.closePath();g.fill();
+  g.fillStyle='#bfe3f5';
+  g.beginPath();g.moveTo(215,128);g.lineTo(247,90);g.lineTo(310,90);g.lineTo(310,128);g.fill();
+  g.beginPath();g.moveTo(325,128);g.lineTo(325,90);g.lineTo(392,90);g.lineTo(424,128);g.fill();
+  // gʻildiraklar
+  [[170,235],[480,235]].forEach(([x,y])=>{
+    g.fillStyle='#15252d';g.beginPath();g.arc(x,y,32,0,7);g.fill();
+    g.fillStyle='#9aa7ad';g.beginPath();g.arc(x,y,14,0,7);g.fill();
+  });
+  // qismlar
+  g.textAlign='center';g.lineJoin='round';
+  PARTS.forEach(p=>{
+    const b=me.broken.includes(p.id);
+    g.beginPath();g.arc(p.x,p.y,22+(b&&!calm?Math.sin(t/200)*3:0),0,7);
+    g.fillStyle='#f6f9fa';g.fill();
+    g.lineWidth=4;g.strokeStyle=b?'#d9372b':'#1f9d55';g.stroke();
+    g.font='22px serif';g.fillStyle='#15252d';g.fillText(b?p.e:'✅',p.x,p.y+8);
+    g.font='bold 12px Bahnschrift,"Segoe UI",sans-serif';
+    const L=p.n+(b?' $'+p.c:'');
+    g.lineWidth=3;g.strokeStyle='#15252d';g.strokeText(L,p.x,p.y-30);
+    g.fillStyle='#fff';g.fillText(L,p.x,p.y-30);
+  });
+}
+(function loop(t){if(me)draw(t);requestAnimationFrame(loop)})();
+
+/* Oldin kirgan boʻlsa, avtomatik kiradi */
+const s=localStorage.getItem('cg_session');
+if(s&&store.get()[s])start(s);
+</script>
+</body>
+</html>
